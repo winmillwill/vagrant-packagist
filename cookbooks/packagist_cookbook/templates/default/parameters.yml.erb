@@ -1,0 +1,35 @@
+parameters:
+    database_driver: pdo_mysql
+    database_host: localhost
+    database_name: packagist
+    database_user: root
+    database_password:
+
+    mailer_transport:
+    mailer_host: localhost
+    mailer_user:
+    mailer_password:
+    mailer_from_email: admin@example.org
+    mailer_from_name: Admin Team
+
+    packagist_host: 192.168.33.10
+    router.request_context.host: %packagist_host%
+    router.request_context.scheme: http
+
+    redis_dsn: redis://localhost/1
+
+    locale: en
+
+    secret: CHANGE_ME_IN_PROD
+    remember_me.secret: CHANGE_ME_IN_PROD
+
+    google_analytics:
+        ga_key:
+
+    github.client_id: <%= node['github']['client_id'] %>
+    github.client_secret: <%= node['github']['client_secret'] %>
+
+    force_ssl: false
+
+    # e.g. [127.0.0.1] if the app is running behind a reverse proxy on localhost
+    trusted_proxies: ~

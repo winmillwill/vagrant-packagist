@@ -28,6 +28,21 @@ end
   end
 end
 
+# nginx
+template "/etc/nginx/sites-available/packagist" do
+  mode 0644
+  source "packagist.conf.erb"
+end
+
+bash "nginx config" do
+  not_if { File.exists?("/etc/nginx/sites-enabled/packagist") }
+  code <<-EOC
+    rm /etc/nginx/sites-enabled/default
+    ln -s /etc/nginx/sites-available/packagist /etc/nginx/sites-enabled/packagist
+  EOC
+end
+
+# composer
 bash "install composer" do
   not_if { File.exists?("/usr/local/bin/composer") }
   code <<-EOC
@@ -43,6 +58,7 @@ bash "update composer" do
   EOC
 end
 
+# php
 git "/tmp/phpiredis" do
   repository "https://github.com/nrk/phpiredis"
   reference "1b3195f9debc34b8058d2b2a36b40ab27bc62f27"
@@ -77,6 +93,36 @@ bash "resolve dependencies of packagist" do
     cd /home/vagrant/packagist
     composer install
   EOC
+end
+
+template "/home/vagrant/packagist/app/config/parameters.yml" do
+  not_if { File.exists?("/home/vagrant/packagist/app/config/parameter.yml") }
+  user "vagrant"
+  group "vagrant"
+  mode 0644
+  source "parameters.yml.erb"
+end
+
+bash "setup Symfony project -1" do
+  code <<-EOC
+  cd /home/vagrant/packagist
+  chmod -R 0777 app/cache
+  chmod -R 0777 app/logs
+EOC
+end
+
+bash "setup Symfony project -2" do
+  user "vagrant"
+  group "vagrant"
+  code <<-EOC
+  cd /home/vagrant/packagist
+  ./app/console assets:install --symlink web
+  mysqlshow -u root packagist
+  if [ $? -ne 0 ]; then
+    ./app/console doctrine:database:create
+    ./app/console doctrine:schema:create
+  fi
+EOC
 end
 
 %w{
