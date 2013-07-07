@@ -8,6 +8,8 @@ Vagrant.configure("2") do |config|
     vb.customize ["modifyvm", :id, "--memory", "1024"]
   end
 
+  config.vm.synced_folder "work/", "/home/vagrant/work", :owner => "vagrant", :group => "www-data", :extra => "dmode=2775,fmode=2664"
+
   config.vm.provision :chef_solo do |chef|
     chef.cookbooks_path = "./cookbooks"
     chef.add_recipe "packagist_cookbook"

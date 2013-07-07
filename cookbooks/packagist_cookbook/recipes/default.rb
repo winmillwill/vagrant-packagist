@@ -9,12 +9,13 @@ end
   subversion
   mercurial
   nginx
-  php5
   php5-dev
   php5-mysql
   php5-cli
   php5-fpm
   php5-intl
+  php5-xdebug
+  php-apc
   php-pear
   mysql-server
   redis-server
@@ -34,12 +35,14 @@ template "/etc/nginx/sites-available/packagist" do
   source "packagist.conf.erb"
 end
 
-bash "nginx config" do
+bash "nginx config - 1" do
+  not_if { File.exists?("/etc/nginx/sites-enabled/default") }
+  code "rm /etc/nginx/sites-enabled/default"
+end
+
+bash "nginx config - 2" do
   not_if { File.exists?("/etc/nginx/sites-enabled/packagist") }
-  code <<-EOC
-    rm /etc/nginx/sites-enabled/default
-    ln -s /etc/nginx/sites-available/packagist /etc/nginx/sites-enabled/packagist
-  EOC
+  code "ln -s /etc/nginx/sites-available/packagist /etc/nginx/sites-enabled/packagist"
 end
 
 # composer
@@ -59,10 +62,12 @@ bash "update composer" do
 end
 
 # php
-git "/tmp/phpiredis" do
-  repository "https://github.com/nrk/phpiredis"
-  reference "1b3195f9debc34b8058d2b2a36b40ab27bc62f27"
-  action :checkout
+if !File.exists?("/usr/lib/php5/20090626/phpiredis.so")
+  git "/tmp/phpiredis" do
+    repository "https://github.com/nrk/phpiredis"
+    reference "1b3195f9debc34b8058d2b2a36b40ab27bc62f27"
+    action :checkout
+  end
 end
 
 bash "install phpiredis" do
@@ -77,45 +82,40 @@ bash "install phpiredis" do
   EOC
 end
 
-git "/home/vagrant/packagist" do
-  user "vagrant"
-  group "vagrant"
-  repository "https://github.com/kawahara/packagist"
-  reference "eab999edbec1fa15480f5f8f5403a7f1959ed400"
-  action :checkout
+if !File.exists?("/home/vagrant/work/packagist")
+  git "/home/vagrant/work/packagist" do
+    user "vagrant"
+    group "vagrant"
+    repository "https://github.com/kawahara/packagist"
+    reference "eab999edbec1fa15480f5f8f5403a7f1959ed400"
+    action :checkout
+  end
 end
 
 bash "resolve dependencies of packagist" do
   user "vagrant"
   group "vagrant"
-  not_if { File.exists?("/home/vagrant/packagist/vendor") }
+  not_if { File.exists?("/home/vagrant/work/packagist/vendor") }
   code <<-EOC
-    cd /home/vagrant/packagist
+    cd /home/vagrant/work/packagist
     composer install
   EOC
 end
 
-template "/home/vagrant/packagist/app/config/parameters.yml" do
-  not_if { File.exists?("/home/vagrant/packagist/app/config/parameter.yml") }
-  user "vagrant"
-  group "vagrant"
-  mode 0644
-  source "parameters.yml.erb"
+if !File.exists?("/home/vagrant/work/packagist/app/config/parameters.yml")
+  template "/home/vagrant/work/packagist/app/config/parameters.yml" do
+    user "vagrant"
+    group "vagrant"
+    mode 0644
+    source "parameters.yml.erb"
+  end
 end
 
-bash "setup Symfony project -1" do
-  code <<-EOC
-  cd /home/vagrant/packagist
-  chmod -R 0777 app/cache
-  chmod -R 0777 app/logs
-EOC
-end
-
-bash "setup Symfony project -2" do
+bash "setup Symfony project" do
   user "vagrant"
   group "vagrant"
   code <<-EOC
-  cd /home/vagrant/packagist
+  cd /home/vagrant/work/packagist
   ./app/console assets:install --symlink web
   mysqlshow -u root packagist
   if [ $? -ne 0 ]; then
