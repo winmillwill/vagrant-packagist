@@ -11,11 +11,6 @@ Vagrant.configure("2") do |config|
   config.vm.provision :chef_solo do |chef|
     chef.cookbooks_path = "./cookbooks"
     chef.add_recipe "packagist_cookbook"
-    chef.json = {
-        github: {
-            client_id: "",
-            client_secret: ""
-        }
-    }
+    chef.json.merge!(JSON.parse(File.read("./chef.json")))
   end
 end
