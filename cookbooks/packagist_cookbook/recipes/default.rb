@@ -4,6 +4,7 @@ end
 
 %w{
   make
+  acl
   vim
   git-core
   subversion
@@ -14,6 +15,7 @@ end
   php5-cli
   php5-fpm
   php5-intl
+  php5-curl
   php5-xdebug
   php-apc
   php-pear
@@ -82,6 +84,12 @@ bash "install phpiredis" do
   EOC
 end
 
+directory "/home/vagrant/work/" do
+  owner "vagrant"
+  group "vagrant"
+  action :create
+end
+
 if !File.exists?("/home/vagrant/work/packagist")
   git "/home/vagrant/work/packagist" do
     user "vagrant"
@@ -111,7 +119,15 @@ if !File.exists?("/home/vagrant/work/packagist/app/config/parameters.yml")
   end
 end
 
-bash "setup Symfony project" do
+bash "setup Symfony project - 1" do
+  code <<-EOC
+  cd /home/vagrant/work/packagist
+  setfacl -R -m u:www-data:rwX -m u:`whoami`:rwX app/cache app/logs
+  setfacl -dR -m u:www-data:rwx -m u:`whoami`:rwx app/cache app/logs
+EOC
+end
+
+bash "setup Symfony project - 2" do
   user "vagrant"
   group "vagrant"
   code <<-EOC
