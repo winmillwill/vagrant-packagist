@@ -85,8 +85,6 @@ bash "install phpiredis" do
 end
 
 directory "/home/vagrant/work/" do
-  owner "vagrant"
-  group "vagrant"
   action :create
 end
 
@@ -94,10 +92,15 @@ if !File.exists?("/home/vagrant/work/packagist")
   git "/home/vagrant/work/packagist" do
     user "vagrant"
     group "vagrant"
-    repository "https://github.com/kawahara/packagist"
-    reference "eab999edbec1fa15480f5f8f5403a7f1959ed400"
+    repository "https://github.com/composer/packagist"
+    reference "master"
     action :checkout
   end
+end
+
+template "/home/vagrant/work/packagist/app/config/parameters.yml" do
+  mode 0644
+  source "parameters.yml.erb"
 end
 
 bash "resolve dependencies of packagist" do
@@ -110,41 +113,28 @@ bash "resolve dependencies of packagist" do
   EOC
 end
 
-if !File.exists?("/home/vagrant/work/packagist/app/config/parameters.yml")
-  template "/home/vagrant/work/packagist/app/config/parameters.yml" do
-    user "vagrant"
-    group "vagrant"
-    mode 0644
-    source "parameters.yml.erb"
-  end
-end
-
 bash "setup Symfony project - 1" do
   code <<-EOC
   cd /home/vagrant/work/packagist
-  setfacl -R -m u:www-data:rwX -m u:`whoami`:rwX app/cache app/logs
-  setfacl -dR -m u:www-data:rwx -m u:`whoami`:rwx app/cache app/logs
 EOC
 end
 
-bash "setup Symfony project - 2" do
-  user "vagrant"
-  group "vagrant"
-  code <<-EOC
-  cd /home/vagrant/work/packagist
-  ./app/console assets:install --symlink web
-  mysqlshow -u root packagist
-  if [ $? -ne 0 ]; then
-    ./app/console doctrine:database:create
-    ./app/console doctrine:schema:create
-  fi
-EOC
-end
+# bash "setup Symfony project - 2" do
+#   user "vagrant"
+#   group "vagrant"
+#   code <<-EOC
+#   cd /home/vagrant/work/packagist
+#   ./app/console assets:install --symlink web
+#   mysqlshow -u root packagist
+#   if [ $? -ne 0 ]; then
+#     ./app/console doctrine:schema:create
+#   fi
+# EOC
+# end
 
 %w{
   mysql
   redis-server
-  tomcat6
   php5-fpm
   nginx
 }.each do |service_name|

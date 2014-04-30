@@ -1,7 +1,7 @@
 server {
     listen 80;
 
-    server_name packagist;
+    server_name packagist.dev;
     root /home/vagrant/work/packagist/web;
 
     rewrite ^/app\.php/?(.*)$ /$1 permanent;
