@@ -4,8 +4,6 @@ end
 
 %w{
   make
-  acl
-  vim
   git-core
   subversion
   mercurial
@@ -24,6 +22,7 @@ end
   libhiredis-dev
   tomcat6
   solr-common
+  solr-tomcat
   curl
 }.each do |pkg|
   package pkg do
@@ -38,7 +37,7 @@ template "/etc/nginx/sites-available/packagist" do
 end
 
 bash "nginx config - 1" do
-  not_if { File.exists?("/etc/nginx/sites-enabled/default") }
+  only_if { File.exists?("/etc/nginx/sites-enabled/default") }
   code "rm /etc/nginx/sites-enabled/default"
 end
 
@@ -63,7 +62,7 @@ bash "update composer" do
   EOC
 end
 
-# php
+# php redis
 if !File.exists?("/usr/lib/php5/20090626/phpiredis.so")
   git "/tmp/phpiredis" do
     repository "https://github.com/nrk/phpiredis"
@@ -84,28 +83,40 @@ bash "install phpiredis" do
   EOC
 end
 
-directory "/home/vagrant/work/" do
-  action :create
+directory node.packagist.web_root do
+  recursive true
 end
 
-if !File.exists?("/home/vagrant/work/packagist")
-  git "/home/vagrant/work/packagist" do
-    user "vagrant"
-    group "vagrant"
-    repository "https://github.com/composer/packagist"
-    reference "master"
-    action :checkout
+# web user must be able to create ~/.composer
+directory '/var/www' do
+  owner 'www-data'
+end
+
+packagist_path = File.join(node.packagist.web_root, 'packagist')
+git packagist_path do
+  user node.packagist.user
+  repository node.packagist.repository
+  reference node.packagist.ref
+  action :checkout
+end
+
+ruby_block 'packagist yaml' do
+  block do
+    require 'yaml'
+    params = YAML.load_file(File.join(packagist_path, "app/config/parameters.yml.dist"))
+    params['parameters']['github.client_id'] = node.github.client_id
+    params['parameters']['github.client_secret'] = node.github.client_secret
+    params['parameters']['packagist_host'] = node.packagist.packagist_host
+    params['nelmio_solarium']['clients']['default']['dsn'] = 'http://localhost:8080/solr'
+
+    File.open(File.join(packagist_path, 'app/config/parameters.yml'), 'w') do |f|
+      f.write params.to_yaml
+    end
   end
 end
 
-template "/home/vagrant/work/packagist/app/config/parameters.yml" do
-  mode 0644
-  source "parameters.yml.erb"
-end
-
 bash "resolve dependencies of packagist" do
-  user "vagrant"
-  group "vagrant"
+  user node.packagist.user
   not_if { File.exists?("/home/vagrant/work/packagist/vendor") }
   code <<-EOC
     cd /home/vagrant/work/packagist
@@ -113,28 +124,21 @@ bash "resolve dependencies of packagist" do
   EOC
 end
 
-bash "setup Symfony project - 1" do
+bash "symfony install" do
+  user node.packagist.user
+  cwd packagist_path
+  returns [0, 1]
   code <<-EOC
-  cd /home/vagrant/work/packagist
+  ./app/console -q -n --no-ansi assets:install --symlink web &&
+  ./app/console -q -n --no-ansi doctrine:database:create &&
+  ./app/console -q -n --no-ansi doctrine:schema:create
 EOC
 end
-
-# bash "setup Symfony project - 2" do
-#   user "vagrant"
-#   group "vagrant"
-#   code <<-EOC
-#   cd /home/vagrant/work/packagist
-#   ./app/console assets:install --symlink web
-#   mysqlshow -u root packagist
-#   if [ $? -ne 0 ]; then
-#     ./app/console doctrine:schema:create
-#   fi
-# EOC
-# end
 
 %w{
   mysql
   redis-server
+  tomcat6
   php5-fpm
   nginx
 }.each do |service_name|
