@@ -1,28 +1,13 @@
-execute "apt-get" do
-  command "apt-get update"
-end
-
 %w{
-  make
-  git-core
   subversion
   mercurial
-  nginx
-  php5-dev
-  php5-mysql
-  php5-cli
-  php5-fpm
-  php5-intl
-  php5-curl
-  php5-xdebug
-  php-apc
-  php-pear
-  mysql-server
   redis-server
-  libhiredis-dev
   tomcat6
   solr-common
   solr-tomcat
+  php5-json
+  php5-fpm
+  php5-mysql
   curl
 }.each do |pkg|
   package pkg do
@@ -36,14 +21,14 @@ template "/etc/nginx/sites-available/packagist" do
   source "packagist.conf.erb"
 end
 
-bash "nginx config - 1" do
+bash "nginx disable default" do
   only_if { File.exists?("/etc/nginx/sites-enabled/default") }
-  code "rm /etc/nginx/sites-enabled/default"
+  code "nxdissite default"
 end
 
-bash "nginx config - 2" do
+bash "nginx enable packagist" do
   not_if { File.exists?("/etc/nginx/sites-enabled/packagist") }
-  code "ln -s /etc/nginx/sites-available/packagist /etc/nginx/sites-enabled/packagist"
+  code "nxensite packagist"
 end
 
 # composer
@@ -63,23 +48,22 @@ bash "update composer" do
 end
 
 # php redis
-if !File.exists?("/usr/lib/php5/20090626/phpiredis.so")
-  git "/tmp/phpiredis" do
-    repository "https://github.com/nrk/phpiredis"
-    reference "1b3195f9debc34b8058d2b2a36b40ab27bc62f27"
-    action :checkout
-  end
+
+git "/tmp/phpredis" do
+  repository "https://github.com/nicolasff/phpredis"
+  action :checkout
 end
 
-bash "install phpiredis" do
-  not_if { File.exists?("/usr/lib/php5/20090626/phpiredis.so") }
+bash "install phpredis" do
+  not_if "php -m | grep redis"
   code <<-EOC
-    cd /tmp/phpiredis
+    cd /tmp/phpredis
     phpize
-    ./configure --enable-phpiredis --with-hiredis-dir=/usr/local
+    ./configure
     make
     make install
-    echo "extension=phpiredis.so" > /etc/php5/conf.d/phpiredis.ini
+    echo "extension=redis.so" > /etc/php5/mods-available/redis.ini
+    php5enmod redis
   EOC
 end
 
@@ -107,7 +91,14 @@ ruby_block 'packagist yaml' do
     params['parameters']['github.client_id'] = node.github.client_id
     params['parameters']['github.client_secret'] = node.github.client_secret
     params['parameters']['packagist_host'] = node.packagist.packagist_host
-    params['nelmio_solarium']['clients']['default']['dsn'] = 'http://localhost:8080/solr'
+    params['parameters']['database_password'] = node.mysql.server_root_password
+    params['nelmio_solarium'] = {
+      'clients' => {
+        'default' => {
+          'dsn' => 'http://localhost:8080/solr'
+        }
+      }
+    }
 
     File.open(File.join(packagist_path, 'app/config/parameters.yml'), 'w') do |f|
       f.write params.to_yaml
@@ -124,25 +115,31 @@ bash "resolve dependencies of packagist" do
   EOC
 end
 
+# cron doesn't like \n
+update = "cd #{packagist_path} && \
+  app/console packagist:update --no-debug --env=prod && \
+  app/console packagist:dump --no-debug --env=prod && \
+  app/console packagist:index --no-debug --env=prod --all"
+
+cron 'symfony-update' do
+  minute '*/5'
+  command update
+end
+
+execute "cp #{packagist_path}/doc/schema.xml /usr/share/solr/conf/"
+service 'tomcat6' do
+  action :restart
+end
+
 bash "symfony install" do
   user node.packagist.user
   cwd packagist_path
   returns [0, 1]
-  code <<-EOC
-  ./app/console -q -n --no-ansi assets:install --symlink web &&
-  ./app/console -q -n --no-ansi doctrine:database:create &&
-  ./app/console -q -n --no-ansi doctrine:schema:create
-EOC
-end
-
-%w{
-  mysql
-  redis-server
-  tomcat6
-  php5-fpm
-  nginx
-}.each do |service_name|
-  service service_name do
-    action [:start, :restart]
-  end
+  code %Q{
+    ./app/console -q -n --no-ansi assets:install --symlink web &&
+    ./app/console -q -n --no-ansi doctrine:database:create &&
+    ./app/console -q -n --no-ansi doctrine:schema:create &&
+    ./app/console -q -n --no-ansi cache:clear --env prod &&
+    #{update}
+  }
 end

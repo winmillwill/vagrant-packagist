@@ -1,0 +1,10 @@
+source 'https://api.berkshelf.com'
+
+cookbook 'apt'
+cookbook 'build-essential'
+cookbook 'database'
+cookbook 'php'
+cookbook 'git'
+cookbook 'nginx'
+cookbook 'chef-solo-search'
+cookbook 'packagist', path: './cookbooks/packagist'

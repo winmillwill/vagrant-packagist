@@ -1,4 +1,4 @@
-name             'packagist_cookbook'
+name             'packagist'
 maintainer       'Shogo Kawahara'
 maintainer_email 'kawahara@bucyou.net'
 license          'MIT License'
